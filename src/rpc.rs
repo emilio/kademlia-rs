@@ -11,15 +11,15 @@ pub const RPC_MESSAGE_MAX_SIZE: usize = 1 * 1024 * 1024;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RPCMessage {
     /// The sender of the message.
-    sender: NodeId,
+    pub sender: NodeId,
     /// The message that was sent.
-    kind: MessageKind,
+    pub kind: MessageKind,
 }
 
 impl RPCMessage {
-    /// Gets the sender ID of the message.
-    pub fn sender(&self) -> &NodeId {
-        &self.sender
+    /// Trivially constructs a `RPCMessage`.
+    pub fn new(sender: NodeId, kind: MessageKind) -> Self {
+        RPCMessage { sender, kind }
     }
 }
 

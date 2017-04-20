@@ -96,18 +96,57 @@ impl Node {
                           message: rpc::RPCMessage,
                           source: SocketAddr)
                           -> io::Result<()> {
-        self.note_node(message.sender(), &source);
-        // TODO
+        self.note_node(&message.sender, &source);
+
+        match message.kind {
+            rpc::MessageKind::Request(request) => {
+                self.handle_request(request, message.sender, source)
+            }
+            rpc::MessageKind::Response(response) => {
+                self.handle_response(response, message.sender, source)
+            }
+        }
+    }
+
+    /// Handles a given request message.
+    pub fn handle_request(&mut self,
+                          request: rpc::RequestKind,
+                          sender: NodeId,
+                          source: SocketAddr)
+                          -> io::Result<()> {
+        match request {
+            rpc::RequestKind::Ping => {
+                let msg = rpc::MessageKind::Response(rpc::ResponseKind::Pong);
+                let msg = rpc::RPCMessage::new(self.id.clone(), msg);
+                self.send_message(sender, source, msg)
+            }
+            _ => Ok(()), // TODO
+        }
+    }
+
+    /// Handles a given response message.
+    pub fn handle_response(&mut self,
+                           _response: rpc::ResponseKind,
+                           _sender: NodeId,
+                           _source: SocketAddr)
+                           -> io::Result<()> {
         Ok(())
     }
 
     /// Send a message to a given node.
     pub fn send_message(&mut self,
-                        _id: &NodeId,
-                        _address: &SocketAddr,
-                        _message: rpc::RPCMessage)
+                        _id: NodeId,
+                        address: SocketAddr,
+                        message: rpc::RPCMessage)
                         -> io::Result<()> {
-        // TODO
-        Ok(())
+        let mut dest = vec![];
+        match bincode::serialize_into(&mut dest,
+                                      &message,
+                                      bincode::Bounded(rpc::RPC_MESSAGE_MAX_SIZE as u64)) {
+            Ok(()) => {},
+            Err(err) => return Err(io::Error::new(io::ErrorKind::Other, err)),
+        };
+
+        self.socket.send_to(&dest, address).map(|_| {})
     }
 }
