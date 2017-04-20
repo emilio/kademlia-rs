@@ -2,9 +2,11 @@
 //!
 //! [kademlia]: http://www.scs.stanford.edu/%7Edm/home/papers/kpos.pdf
 
+use bincode;
 use k_bucket::KBucket;
 use node_id::NodeId;
 use rand;
+use rpc;
 use std::io;
 use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
 use storage;
@@ -21,6 +23,9 @@ pub struct Node {
     buckets: Box<[KBucket]>,
 
     /// The UDP socket we're connecting to.
+    ///
+    /// FIXME(emilio): If we want to store massive blobs, we may want to support
+    /// TCP instead.
     socket: UdpSocket,
 
     /// The Os RNG that we'll use for all our random stuff, like message
@@ -72,5 +77,37 @@ impl Node {
         let distance = self.id.xor(id);
         let _evicted_entry =
             self.buckets[distance.bucket_index()].saw_node(id, address);
+    }
+
+    /// Tries to receive a message over the network.
+    pub fn recv_message(&mut self) -> io::Result<()> {
+        let mut dest = vec![0; rpc::RPC_MESSAGE_MAX_SIZE];
+
+        let (bytes_read, source) = self.socket.recv_from(&mut dest)?;
+        let message = match bincode::deserialize(&dest[..bytes_read]) {
+            Ok(m) => m,
+            Err(err) => return Err(io::Error::new(io::ErrorKind::Other, err)),
+        };
+        self.handle_message(message, source)
+    }
+
+    /// Handles a given message in an appropriate way.
+    pub fn handle_message(&mut self,
+                          message: rpc::RPCMessage,
+                          source: SocketAddr)
+                          -> io::Result<()> {
+        self.note_node(message.sender(), &source);
+        // TODO
+        Ok(())
+    }
+
+    /// Send a message to a given node.
+    pub fn send_message(&mut self,
+                        _id: &NodeId,
+                        _address: &SocketAddr,
+                        _message: rpc::RPCMessage)
+                        -> io::Result<()> {
+        // TODO
+        Ok(())
     }
 }

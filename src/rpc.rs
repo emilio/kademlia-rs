@@ -4,7 +4,11 @@ use k_bucket::KBucketEntry;
 use node_id::NodeId;
 use storage;
 
+/// 1MB should be enough for now.
+pub const RPC_MESSAGE_MAX_SIZE: usize = 1 * 1024 * 1024;
+
 /// A single RPC message.
+#[derive(Debug, Serialize, Deserialize)]
 pub struct RPCMessage {
     /// The sender of the message.
     sender: NodeId,
@@ -12,7 +16,15 @@ pub struct RPCMessage {
     kind: MessageKind,
 }
 
+impl RPCMessage {
+    /// Gets the sender ID of the message.
+    pub fn sender(&self) -> &NodeId {
+        &self.sender
+    }
+}
+
 /// The different messages defined by the RPC protocol.
+#[derive(Debug, Serialize, Deserialize)]
 pub enum MessageKind {
     /// A request message.
     Request(RequestKind),
@@ -21,6 +33,7 @@ pub enum MessageKind {
 }
 
 /// The different request kinds defined by the RPC protocol.
+#[derive(Debug, Serialize, Deserialize)]
 pub enum RequestKind {
     /// A `PING` message.
     Ping,
@@ -33,6 +46,7 @@ pub enum RequestKind {
 }
 
 /// The different response kinds defined by the RPC protocol.
+#[derive(Debug, Serialize, Deserialize)]
 pub enum ResponseKind {
     /// A `PONG` message, as a response to a ping.
     Pong,
@@ -43,6 +57,7 @@ pub enum ResponseKind {
 }
 
 /// A response for a `FIND_VALUE`
+#[derive(Debug, Serialize, Deserialize)]
 pub enum FindValueResponse {
     /// A value was found for this key.
     Value(storage::Value),

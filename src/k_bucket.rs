@@ -6,6 +6,7 @@ use std::net::SocketAddr;
 
 /// A k-bucket entry representing a single node, with information necessary to
 /// contact it.
+#[derive(Debug, Serialize, Deserialize)]
 pub struct KBucketEntry {
     /// The id of this node.
     node_id: NodeId,
@@ -30,6 +31,7 @@ const K: usize = 6;
 
 /// A k-bucket, that is, a list of up-to k entries representing the most
 /// recently seen nodes in the range corresponding to this bucket.
+#[derive(Debug, Serialize, Deserialize)]
 pub struct KBucket {
     /// An ordered list of nodes, ordered from least-recently seen to
     /// most-recently seen.

@@ -3,7 +3,7 @@
 use rand::Rng;
 
 /// A node id, with 160 bits.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct NodeId {
     id: [u8; 20],
 }
