@@ -55,6 +55,11 @@ impl Node {
         })
     }
 
+    /// Gets the id of the node.
+    pub fn id(&self) -> &NodeId {
+        &self.id
+    }
+
     /// A callback that gets executed for each message received or requested.
     ///
     /// This updates the routing tables, and potentially sends new messages.
@@ -88,6 +93,9 @@ impl Node {
             Ok(m) => m,
             Err(err) => return Err(io::Error::new(io::ErrorKind::Other, err)),
         };
+
+        debug!("Got message {:?}", message);
+
         self.handle_message(message, source)
     }
 
@@ -146,6 +154,8 @@ impl Node {
             Ok(()) => {},
             Err(err) => return Err(io::Error::new(io::ErrorKind::Other, err)),
         };
+
+        debug!("Sent message {:?}", message);
 
         self.socket.send_to(&dest, address).map(|_| {})
     }

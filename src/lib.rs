@@ -5,6 +5,8 @@
 #![allow(dead_code)]
 
 extern crate bincode;
+#[macro_use]
+extern crate log;
 extern crate rand;
 #[macro_use]
 extern crate serde_derive;
