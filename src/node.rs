@@ -6,7 +6,7 @@ use k_bucket::KBucket;
 use node_id::NodeId;
 use rand;
 use std::io;
-use std::net::SocketAddr;
+use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
 use storage;
 
 /// A node in this Kademlia network.
@@ -20,13 +20,21 @@ pub struct Node {
     /// The set of buckets for each bit of the key.
     buckets: Box<[KBucket]>,
 
+    /// The UDP socket we're connecting to.
+    socket: UdpSocket,
+
+    /// The Os RNG that we'll use for all our random stuff, like message
+    /// payloads.
     rng: rand::OsRng,
 }
 
 impl Node {
     /// Creates a new node, or returns an error if the function couldn't open
-    /// the OS rng.
-    pub fn new() -> Result<Self, io::Error> {
+    /// the OS rng, or couldn't open the appropriate port.
+    pub fn new<A>(addr: A) -> Result<Self, io::Error>
+        where A: ToSocketAddrs,
+    {
+        let socket = UdpSocket::bind(addr)?;
         let mut rng = rand::OsRng::new()?;
         let id = NodeId::random(&mut rng);
         let mut buckets = Vec::with_capacity(160);
@@ -37,6 +45,7 @@ impl Node {
             id: id,
             store: storage::Store::new(),
             buckets: buckets.into_boxed_slice(),
+            socket: socket,
             rng: rng,
         })
     }
@@ -49,11 +58,19 @@ impl Node {
     /// added entry if it's still alive". Authors of the paper claim this is
     /// useful because long-living nodes tend to fail less. It's not too
     /// relevant for our implementation though.
+    ///
     pub fn on_message(&mut self,
-                      partner: &NodeId,
+                      id: &NodeId,
                       address: &SocketAddr) {
-        let distance = self.id.xor(partner);
+        self.note_node(id, address);
+    }
+
+    /// A function used to note the ID and address of a node.
+    pub fn note_node(&mut self,
+                     id: &NodeId,
+                     address: &SocketAddr) {
+        let distance = self.id.xor(id);
         let _evicted_entry =
-            self.buckets[distance.bucket_index()].saw_node(partner, address);
+            self.buckets[distance.bucket_index()].saw_node(id, address);
     }
 }
