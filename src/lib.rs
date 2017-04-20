@@ -6,5 +6,8 @@
 
 extern crate rand;
 
+pub mod k_bucket;
 pub mod node;
 pub mod node_id;
+pub mod rpc;
+pub mod storage;
