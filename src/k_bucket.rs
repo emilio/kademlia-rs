@@ -6,7 +6,7 @@ use std::net::SocketAddr;
 
 /// A k-bucket entry representing a single node, with information necessary to
 /// contact it.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KBucketEntry {
     /// The id of this node.
     node_id: NodeId,
@@ -19,6 +19,11 @@ impl KBucketEntry {
     pub fn new(node_id: NodeId, ip: SocketAddr) -> Self {
         KBucketEntry { node_id, ip }
     }
+
+    /// Get the id associated with this entry.
+    pub fn id(&self) -> &NodeId {
+        &self.node_id
+    }
 }
 
 /// The `k` constant as described in the paper:
@@ -27,7 +32,7 @@ impl KBucketEntry {
 /// > fail within an hour of each other (for example k = 20).
 ///
 /// In our application, since we don't have that many nodes, 6 is probably fine.
-const K: usize = 6;
+pub const K: usize = 6;
 
 /// A k-bucket, that is, a list of up-to k entries representing the most
 /// recently seen nodes in the range corresponding to this bucket.
@@ -43,6 +48,15 @@ impl KBucket {
     pub fn new() -> Self {
         KBucket {
             entries: VecDeque::with_capacity(K + 1),
+        }
+    }
+
+    /// Collects all the entries of this bucket into `result`.
+    ///
+    /// Used just to avoid exposing the entry list.
+    pub fn collect_into(&self, result: &mut Vec<KBucketEntry>) {
+        for entry in &self.entries {
+            result.push(entry.clone());
         }
     }
 

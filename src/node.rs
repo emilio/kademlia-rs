@@ -3,7 +3,7 @@
 //! [kademlia]: http://www.scs.stanford.edu/%7Edm/home/papers/kpos.pdf
 
 use bincode;
-use k_bucket::KBucket;
+use k_bucket::{K, KBucket, KBucketEntry};
 use node_id::NodeId;
 use rand;
 use rpc;
@@ -116,6 +116,48 @@ impl Node {
         }
     }
 
+    /// Gets the `k` nodes we know closer to `node_id`. This is the main search
+    /// procedure for the `FIND_VALUE` and `FIND_NODE` messages.
+    pub fn find_k_known_nodes_closer_to(&self, id: NodeId) -> Vec<KBucketEntry> {
+        let distance = self.id.xor(&id);
+        let mut ret = Vec::with_capacity(K);
+
+        // First, collect from the closest bucket.
+        let index = distance.bucket_index();
+        self.buckets[index].collect_into(&mut ret);
+
+        // Collect on adjacent buckets.
+        //
+        // TODO(emilio): This is what the algorithm is supposed to do, but seems
+        // it could miss a few entries that are closer?
+        //
+        // *shrug*
+        let mut delta = 1;
+        while ret.len() < K {
+            let mut found_to_one_side = false;
+            if index >= delta {
+                found_to_one_side = true;
+                self.buckets[index - delta].collect_into(&mut ret);
+            }
+            if index + delta < self.buckets.len() {
+                found_to_one_side = true;
+                self.buckets[index + delta].collect_into(&mut ret);
+            }
+
+            if !found_to_one_side { // We did everything we could.
+                break;
+            }
+            delta += 1;
+        }
+
+        // TODO(emilio): This can be somewhat expensive, I guess. We could be a
+        // bit smarter.
+        ret.sort_by_key(|e| self.id.xor(e.id()));
+
+        ret.truncate(K);
+        ret
+    }
+
     /// Handles a given request message.
     pub fn handle_request(&mut self,
                           request: rpc::RequestKind,
@@ -128,7 +170,40 @@ impl Node {
                 let msg = rpc::RPCMessage::new(self.id.clone(), msg);
                 self.send_message(sender, source, msg)
             }
-            _ => Ok(()), // TODO
+            rpc::RequestKind::FindNode(node_id) => {
+                if node_id == self.id {
+                    // That's quite a nonsensical request, since they needed our
+                    // address and ID to find us.
+                    return Ok(());
+                }
+
+                let nodes = self.find_k_known_nodes_closer_to(node_id);
+                let response = rpc::ResponseKind::FindNode(nodes);
+                let msg = rpc::MessageKind::Response(response);
+                let msg = rpc::RPCMessage::new(self.id.clone(), msg);
+
+                self.send_message(sender, source, msg)
+            }
+            rpc::RequestKind::Store(key, val) => {
+                self.store.insert(key, val);
+                Ok(())
+            }
+            rpc::RequestKind::FindValue(key) => {
+                let response = match self.store.get(&key) {
+                    Some(v) => {
+                        rpc::FindValueResponse::Value(v.clone())
+                    }
+                    None => {
+                        let nodes = self.find_k_known_nodes_closer_to(key);
+                        rpc::FindValueResponse::CloserNodes(nodes)
+                    }
+                };
+
+                let msg = rpc::ResponseKind::FindValue(response);
+                let msg = rpc::MessageKind::Response(msg);
+                let msg = rpc::RPCMessage::new(self.id.clone(), msg);
+                self.send_message(sender, source, msg)
+            }
         }
     }
 

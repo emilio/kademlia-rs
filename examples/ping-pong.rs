@@ -28,7 +28,6 @@ fn main() {
     let address = net::Ipv4Addr::new(127, 0, 0, 1);
     let address = net::SocketAddr::V4(net::SocketAddrV4::new(address, 4300));
 
-
     let mut node = Node::new("127.0.0.1:4301").unwrap();
     node.note_node(&id, &address);
     let msg =
