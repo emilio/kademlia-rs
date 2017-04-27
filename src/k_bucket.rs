@@ -3,6 +3,7 @@
 use node_id::NodeId;
 use std::collections::VecDeque;
 use std::net::SocketAddr;
+use std::collections::HashSet;
 
 /// A k-bucket entry representing a single node, with information necessary to
 /// contact it.
@@ -23,6 +24,11 @@ impl KBucketEntry {
     /// Get the id associated with this entry.
     pub fn id(&self) -> &NodeId {
         &self.node_id
+    }
+
+    /// Get the address associated with this entry.
+    pub fn address(&self) -> &SocketAddr {
+        &self.ip
     }
 }
 
@@ -51,12 +57,15 @@ impl KBucket {
         }
     }
 
-    /// Collects all the entries of this bucket into `result`.
-    ///
-    /// Used just to avoid exposing the entry list.
-    pub fn collect_into(&self, result: &mut Vec<KBucketEntry>) {
+    /// Collects all the entries of this bucket into `result` that are not
+    /// present into `seen`.
+    pub fn collect_into(&self,
+                        result: &mut Vec<KBucketEntry>,
+                        seen: &HashSet<NodeId>) {
         for entry in &self.entries {
-            result.push(entry.clone());
+            if !seen.contains(entry.id()) {
+                result.push(entry.clone());
+            }
         }
     }
 

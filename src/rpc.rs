@@ -8,7 +8,7 @@ use storage;
 pub const RPC_MESSAGE_MAX_SIZE: usize = 1 * 1024 * 1024;
 
 /// A single RPC message.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RPCMessage {
     /// The sender of the message.
     pub sender: NodeId,
@@ -24,7 +24,7 @@ impl RPCMessage {
 }
 
 /// The different messages defined by the RPC protocol.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum MessageKind {
     /// A request message.
     Request(RequestKind),
@@ -33,7 +33,7 @@ pub enum MessageKind {
 }
 
 /// The different request kinds defined by the RPC protocol.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RequestKind {
     /// A `PING` message.
     Ping,
@@ -46,7 +46,7 @@ pub enum RequestKind {
 }
 
 /// The different response kinds defined by the RPC protocol.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ResponseKind {
     /// A `PONG` message, as a response to a ping.
     Pong,
@@ -57,10 +57,10 @@ pub enum ResponseKind {
 }
 
 /// A response for a `FIND_VALUE`
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FindValueResponse {
     /// A value was found for this key.
-    Value(storage::Value),
+    Value(storage::Key, storage::Value),
 
     /// The value was not found on this node, but here are some nodes that are
     /// closer.

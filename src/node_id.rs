@@ -10,6 +10,12 @@ pub struct NodeId {
 }
 
 impl NodeId {
+    /// Creates a given ID with the raw bytes specified. Useful for creating
+    /// keys.
+    pub fn from_bytes(id: [u8; 20]) -> Self {
+        NodeId { id }
+    }
+
     /// Create a new random `NodeId`.
     pub fn random<R>(rng: &mut R) -> Self
         where R: Rng,

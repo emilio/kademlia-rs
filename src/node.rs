@@ -8,6 +8,7 @@ use node_id::NodeId;
 use rand;
 use rpc;
 use std::io;
+use std::collections::HashSet;
 use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
 use storage;
 
@@ -60,6 +61,11 @@ impl Node {
         &self.id
     }
 
+    /// Get the socket address of the node, if any, or an error.
+    pub fn address(&self) -> io::Result<SocketAddr> {
+        self.socket.local_addr()
+    }
+
     /// A callback that gets executed for each message received or requested.
     ///
     /// This updates the routing tables, and potentially sends new messages.
@@ -68,7 +74,6 @@ impl Node {
     /// added entry if it's still alive". Authors of the paper claim this is
     /// useful because long-living nodes tend to fail less. It's not too
     /// relevant for our implementation though.
-    ///
     pub fn on_message(&mut self,
                       id: &NodeId,
                       address: &SocketAddr) {
@@ -105,13 +110,22 @@ impl Node {
 
     /// Gets the `k` nodes we know closer to `node_id`. This is the main search
     /// procedure for the `FIND_VALUE` and `FIND_NODE` messages.
-    pub fn find_k_known_nodes_closer_to(&self, id: NodeId) -> Vec<KBucketEntry> {
-        let distance = self.id.xor(&id);
+    pub fn find_k_known_nodes_closer_to(&self, id: &NodeId) -> Vec<KBucketEntry> {
+        self.find_k_known_nodes_closer_to_not_in(id, &HashSet::new())
+    }
+
+    /// Gets the `k` nodes we know closer to `node_id`. This is the main search
+    /// procedure for the `FIND_VALUE` and `FIND_NODE` messages.
+    pub fn find_k_known_nodes_closer_to_not_in(&self,
+                                               id: &NodeId,
+                                               seen: &HashSet<NodeId>)
+                                               -> Vec<KBucketEntry> {
+        let distance = self.id.xor(id);
         let mut ret = Vec::with_capacity(K);
 
         // First, collect from the closest bucket.
         let index = distance.bucket_index();
-        self.buckets[index].collect_into(&mut ret);
+        self.buckets[index].collect_into(&mut ret, seen);
 
         // Collect on adjacent buckets.
         //
@@ -124,11 +138,11 @@ impl Node {
             let mut found_to_one_side = false;
             if index >= delta {
                 found_to_one_side = true;
-                self.buckets[index - delta].collect_into(&mut ret);
+                self.buckets[index - delta].collect_into(&mut ret, seen);
             }
             if index + delta < self.buckets.len() {
                 found_to_one_side = true;
-                self.buckets[index + delta].collect_into(&mut ret);
+                self.buckets[index + delta].collect_into(&mut ret, seen);
             }
 
             if !found_to_one_side { // We did everything we could.
@@ -164,7 +178,7 @@ impl Node {
                     return Ok(());
                 }
 
-                let nodes = self.find_k_known_nodes_closer_to(node_id);
+                let nodes = self.find_k_known_nodes_closer_to(&node_id);
                 let response = rpc::ResponseKind::FindNode(nodes);
                 let msg = rpc::MessageKind::Response(response);
                 let msg = rpc::RPCMessage::new(self.id.clone(), msg);
@@ -178,10 +192,10 @@ impl Node {
             rpc::RequestKind::FindValue(key) => {
                 let response = match self.store.get(&key) {
                     Some(v) => {
-                        rpc::FindValueResponse::Value(v.clone())
+                        rpc::FindValueResponse::Value(key, v.clone())
                     }
                     None => {
-                        let nodes = self.find_k_known_nodes_closer_to(key);
+                        let nodes = self.find_k_known_nodes_closer_to(&key);
                         rpc::FindValueResponse::CloserNodes(nodes)
                     }
                 };
@@ -211,5 +225,98 @@ impl Node {
         debug!("Sent message {:?}", message);
 
         self.socket.send_to(&dest, address).map(|_| {})
+    }
+
+    /// Sends a store message, using the given key and value.
+    ///
+    /// Returns the results of the IO operations.
+    pub fn try_store(&mut self,
+                     key: storage::Key,
+                     value: storage::Value) {
+        self.store.insert(key.clone(), value.clone());
+
+        let nodes = self.find_k_known_nodes_closer_to(&key);
+        if nodes.is_empty() {
+            return;
+        }
+
+        let message = rpc::MessageKind::Request(rpc::RequestKind::Store(key, value));
+        let message = rpc::RPCMessage::new(self.id().clone(), message);
+
+        for node in nodes {
+            match self.send_message(node.id().clone(),
+                                    node.address().clone(),
+                                    message.clone()) {
+                Ok(()) => {}
+                Err(err) => {
+                    error!("Failed to send store request to {:?}, {:?}",
+                           node.id(), err);
+                }
+            }
+        }
+    }
+
+    /// Tries to find a key in the map.
+    ///
+    /// Returns an error in the case of an error receiving a message, otherwise
+    /// returns the value if found.
+    pub fn find(&mut self, k: storage::Key)
+                -> io::Result<Option<storage::Value>> {
+        let mut nodes_seen = HashSet::new();
+
+        let request =
+            rpc::MessageKind::Request(rpc::RequestKind::FindValue(k.clone()));
+        let request =
+            rpc::RPCMessage::new(self.id.clone(), request);
+        let mut nodes_to_try_from_last_round = Vec::new();
+        loop {
+            let nodes =
+                self.find_k_known_nodes_closer_to_not_in(&k, &nodes_seen);
+            if nodes.is_empty() && nodes_to_try_from_last_round.is_empty() {
+                return Ok(None);
+            }
+            for node in nodes.into_iter().chain(nodes_to_try_from_last_round.into_iter()) {
+                nodes_seen.insert(node.id().clone());
+                let _ = self.send_message(node.id().clone(),
+                                          node.address().clone(),
+                                          request.clone());
+            }
+
+            nodes_to_try_from_last_round = Vec::new();
+
+            // FIXME(emilio): This blocks, which is suboptimal, and assumes that
+            // a timeout hasn't been reached.
+            //
+            // A good step would be just recv_message with a timeout. Even
+            // better would be making a generic "observer" interface that
+            // observed new messages and resolved a future with the value if
+            // found...
+            let (source, message) = self.recv_message()?;
+            match message.kind {
+                rpc::MessageKind::Request(r) => {
+                    let _ = self.handle_request(r, message.sender, source);
+                }
+                rpc::MessageKind::Response(rpc::ResponseKind::FindValue(fvr)) => {
+                    match fvr {
+                        rpc::FindValueResponse::Value(key, v) => {
+                            if key == k {
+                                return Ok(Some(v))
+                            }
+                            debug!("Received stale value for key {:?}", key);
+                        }
+                        // FIXME(emilio): This should probably reply w/ the key
+                        // too to avoid stale responses?
+                        rpc::FindValueResponse::CloserNodes(nodes) => {
+                            nodes_to_try_from_last_round = nodes;
+                        }
+                    }
+                }
+                rpc::MessageKind::Response(..) => {
+                    // FIXME(emilio): With the non-blocking, observer-based
+                    // interface, this would probably be way nicer.
+                    debug!("Received stale response {:?}", message);
+                }
+            }
+        }
     }
 }
