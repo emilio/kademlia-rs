@@ -95,10 +95,24 @@ fn main() {
         loop {
             match node.find(storage::hash(&"foo".into())).unwrap() {
                 Some(v) => {
-                    tx.send(v).unwrap();
+                    tx.send(Some(v)).unwrap();
                     break;
                 },
                 None => {},
+            }
+        }
+
+        loop {
+            // FIXME(emilio): hashing _before_ looking can't avoid collisions,
+            // which sucks!
+            //
+            // For now just ignore them.
+            match node.find(storage::hash(&"fuzzz".into())).unwrap() {
+                Some(..) => panic!("How!"),
+                None => {
+                    tx.send(None).unwrap();
+                    break;
+                },
             }
         }
     });
@@ -106,6 +120,9 @@ fn main() {
 
     node.try_store(storage::hash(&"foo".into()), "bar".into());
     let value = rx.recv().unwrap();
-    assert_eq!(&value, "bar");
+    assert_eq!(value, Some("bar".into()));
     println!("Success! The other node found the value {:?}", value);
+    let value = rx.recv().unwrap();
+    assert!(value.is_none());
+    println!("Success! The other node didn't found the value {:?}", value);
 }
