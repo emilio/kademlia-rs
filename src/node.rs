@@ -85,35 +85,22 @@ impl Node {
     }
 
     /// Tries to receive a message over the network.
-    pub fn recv_message(&mut self) -> io::Result<()> {
+    ///
+    /// Returns a result, either success, with the socket address we received
+    /// the message from, or an error.
+    pub fn recv_message(&mut self) -> io::Result<(SocketAddr, rpc::RPCMessage)> {
         let mut dest = vec![0; rpc::RPC_MESSAGE_MAX_SIZE];
 
         let (bytes_read, source) = self.socket.recv_from(&mut dest)?;
-        let message = match bincode::deserialize(&dest[..bytes_read]) {
-            Ok(m) => m,
-            Err(err) => return Err(io::Error::new(io::ErrorKind::Other, err)),
-        };
+        let message: rpc::RPCMessage =
+            match bincode::deserialize(&dest[..bytes_read]) {
+                Ok(m) => m,
+                Err(err) => return Err(io::Error::new(io::ErrorKind::Other, err)),
+            };
 
         debug!("Got message {:?}", message);
-
-        self.handle_message(message, source)
-    }
-
-    /// Handles a given message in an appropriate way.
-    pub fn handle_message(&mut self,
-                          message: rpc::RPCMessage,
-                          source: SocketAddr)
-                          -> io::Result<()> {
         self.note_node(&message.sender, &source);
-
-        match message.kind {
-            rpc::MessageKind::Request(request) => {
-                self.handle_request(request, message.sender, source)
-            }
-            rpc::MessageKind::Response(response) => {
-                self.handle_response(response, message.sender, source)
-            }
-        }
+        Ok((source, message))
     }
 
     /// Gets the `k` nodes we know closer to `node_id`. This is the main search
@@ -205,15 +192,6 @@ impl Node {
                 self.send_message(sender, source, msg)
             }
         }
-    }
-
-    /// Handles a given response message.
-    pub fn handle_response(&mut self,
-                           _response: rpc::ResponseKind,
-                           _sender: NodeId,
-                           _source: SocketAddr)
-                           -> io::Result<()> {
-        Ok(())
     }
 
     /// Send a message to a given node.

@@ -19,8 +19,17 @@ fn main() {
     ::std::thread::spawn(move || {
         let mut node = Node::new("127.0.0.1:4300").unwrap();
         tx.send(node.id().clone()).unwrap();
-        while let Ok(..) = node.recv_message() {
-            // Do nothing.
+        while let Ok((source, message)) = node.recv_message() {
+            match message.kind {
+                rpc::MessageKind::Request(rpc::RequestKind::Ping) => {
+                    println!("Got ping from {:?} at {:?}",
+                             message.sender, source);
+                    node.handle_request(rpc::RequestKind::Ping,
+                                        message.sender,
+                                        source).unwrap();
+                }
+                other => panic!("Unexpected message {:?}", other),
+            }
         }
     });
 
@@ -34,5 +43,12 @@ fn main() {
         rpc::RPCMessage::new(node.id().clone(),
                              rpc::MessageKind::Request(rpc::RequestKind::Ping));
     node.send_message(id, address, msg).unwrap();
-    node.recv_message().unwrap();
+    let (source, message) = node.recv_message().unwrap();
+    match message.kind {
+        rpc::MessageKind::Response(rpc::ResponseKind::Pong) => {
+            println!("Got pong from {:?} at {:?}",
+                     message.sender, source);
+        },
+        other => panic!("unexpected message {:?}", other),
+    }
 }
