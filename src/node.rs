@@ -80,6 +80,11 @@ impl Node {
         &self.id
     }
 
+    /// Go through the raw storage mechanism.
+    pub fn store(&self) -> &storage::Store {
+        &self.store
+    }
+
     /// Get the socket address of the node, if any, or an error.
     pub fn address(&self) -> io::Result<SocketAddr> {
         self.socket.local_addr()
