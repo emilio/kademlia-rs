@@ -4,8 +4,8 @@ use k_bucket::KBucketEntry;
 use node_id::NodeId;
 use storage;
 
-/// 1MB should be enough for now.
-pub const RPC_MESSAGE_MAX_SIZE: usize = 1 * 1024 * 1024;
+/// 10MB should be enough for now.
+pub const RPC_MESSAGE_MAX_SIZE: usize = 10 * 1024 * 1024;
 
 /// A single RPC message.
 #[derive(Debug, Clone, Serialize, Deserialize)]
