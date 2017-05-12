@@ -2,6 +2,7 @@
 
 use rand::Rng;
 use std::cmp::{Ord, PartialOrd, Ordering};
+use std::fmt;
 
 /// A node id, with 160 bits.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -14,6 +15,38 @@ impl NodeId {
     /// keys.
     pub fn from_bytes(id: [u8; 20]) -> Self {
         NodeId { id }
+    }
+
+    /// Gets a node id from an hexadecimal string.
+    pub fn from_hex_string(string: &str) -> Option<Self> {
+        if string.is_empty() {
+            return None;
+        }
+
+        let mut id = NodeId { id: [0; 20] };
+        let mut chars = string.chars().rev();
+
+        for i in 0..20 {
+            for j in 0..2 {
+                let c = match chars.next() {
+                    Some(c) => c,
+                    None => return Some(id),
+                };
+
+                match c.to_digit(16) {
+                    Some(c) => {
+                        id.id[20 - i - 1] |= (c << (j * 4)) as u8
+                    },
+                    None => return None,
+                }
+            }
+        }
+
+        if chars.next().is_some() {
+            return None;
+        }
+
+        Some(id)
     }
 
     /// Create a new random `NodeId`.
@@ -123,4 +156,50 @@ impl Distance {
         debug_assert_eq!(idx, 0);
         idx
     }
+}
+
+impl fmt::Display for NodeId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        let mut all_zeros = true;
+        for byte in &self.id {
+            if all_zeros && *byte == 0 {
+                continue;
+            }
+
+            let upper_half = (byte & 0xf0) >> 4;
+            if !all_zeros || (all_zeros && upper_half != 0) {
+                write!(f, "{:x}", upper_half)?;
+            }
+
+            all_zeros = false;
+            let lower_half = byte & 0x0f;
+            write!(f, "{:x}", lower_half)?;
+        }
+
+        Ok(())
+    }
+}
+
+#[test]
+fn test_node_id_from_string() {
+    use rand;
+
+    let mut id = NodeId { id: [0; 20] };
+    id.id[19] = 1;
+
+    let serialized = format!("{}", id);
+    assert_eq!(serialized, "1");
+
+    let deserialized = NodeId::from_hex_string(&serialized);
+    assert_eq!(deserialized, Some(id));
+
+    let mut rng = rand::OsRng::new().unwrap();
+    for _ in 0..100 {
+        let id = NodeId::random(&mut rng);
+        let serialized = format!("{}", id);
+
+        let deserialized = NodeId::from_hex_string(&serialized);
+        assert_eq!(deserialized, Some(id));
+    }
+
 }
