@@ -93,7 +93,7 @@ fn main() {
         }
 
         loop {
-            match node.find(storage::hash(&"foo".into())).unwrap() {
+            match node.find(storage::hash("foo".as_bytes())).unwrap() {
                 Some(v) => {
                     tx.send(Some(v)).unwrap();
                     break;
@@ -107,7 +107,7 @@ fn main() {
             // which sucks!
             //
             // For now just ignore them.
-            match node.find(storage::hash(&"fuzzz".into())).unwrap() {
+            match node.find(storage::hash("fuzzz".as_bytes())).unwrap() {
                 Some(..) => panic!("How!"),
                 None => {
                     tx.send(None).unwrap();
@@ -118,7 +118,7 @@ fn main() {
     });
 
 
-    node.try_store(storage::hash(&"foo".into()), "bar".into());
+    node.try_store(storage::hash("foo".as_bytes()), "bar".into());
     let value = rx.recv().unwrap();
     assert_eq!(value, Some("bar".into()));
     println!("Success! The other node found the value {:?}", value);
