@@ -10,6 +10,7 @@ use rpc;
 use std::io;
 use std::collections::HashSet;
 use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
+use std::time::Duration;
 use storage;
 
 /// A node in this Kademlia network.
@@ -87,6 +88,13 @@ impl Node {
         let distance = self.id.xor(id);
         let _evicted_entry =
             self.buckets[distance.bucket_index()].saw_node(id, address);
+    }
+
+    /// Set the read timeout of the underlying socket.
+    pub fn set_read_timeout(&mut self,
+                            duration: Option<Duration>)
+                            -> io::Result<()> {
+        self.socket.set_read_timeout(duration)
     }
 
     /// Tries to receive a message over the network.
