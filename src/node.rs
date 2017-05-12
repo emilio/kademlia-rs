@@ -356,6 +356,10 @@ impl Node {
     pub fn find(&mut self,
                 k: storage::Key)
                 -> io::Result<Option<storage::Value>> {
+        if let Some(r) = self.store.get(&k) {
+            return Ok(Some(r.clone()));
+        }
+
         let mut nodes_seen = HashSet::new();
 
         let old_timeout = self.socket.read_timeout()?;
