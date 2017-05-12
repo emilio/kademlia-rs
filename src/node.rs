@@ -125,6 +125,7 @@ impl Node {
     pub fn note_node(&mut self,
                      id: &NodeId,
                      address: &SocketAddr) {
+        trace!("[{}] note_node: {} at {:?}", self.id, id, address);
         let distance = self.id.xor(id);
         let _evicted_entry =
             self.buckets[distance.bucket_index()].saw_node(id, address);
@@ -356,6 +357,8 @@ impl Node {
     pub fn find(&mut self,
                 k: storage::Key)
                 -> io::Result<Option<storage::Value>> {
+        trace!("[{}] Looking at {:?}", self.id(), k);
+
         if let Some(r) = self.store.get(&k) {
             return Ok(Some(r.clone()));
         }
@@ -373,6 +376,10 @@ impl Node {
         loop {
             let nodes =
                 self.find_k_known_nodes_closer_to_not_in(&k, &nodes_seen);
+
+            trace!("[{}] closer_nodes: {:?}, from_last: {:?}", self.id(),
+                   nodes, nodes_to_try_from_last_round);
+
             if nodes.is_empty() && nodes_to_try_from_last_round.is_empty() {
                 self.socket.set_read_timeout(old_timeout)?;
                 return Ok(None);
@@ -401,6 +408,7 @@ impl Node {
                 rpc::MessageKind::Response(rpc::ResponseKind::FindValue(fvr)) => {
                     match fvr {
                         rpc::FindValueResponse::Value(key, v) => {
+                            trace!("Got Value({:?}, {:?})", key, v);
                             if key == k {
                                 self.socket.set_read_timeout(old_timeout)?;
                                 return Ok(Some(v))
