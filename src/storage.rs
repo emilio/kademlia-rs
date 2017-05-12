@@ -25,7 +25,7 @@ pub type Store = HashMap<Key, Value>;
 
 /// Map unequivocally a given `Value` to a `Key`.
 #[allow(deprecated)] // SipHasher is deprecated, oh well.
-pub fn hash(val: &Value) -> Key {
+pub fn hash(val: &[u8]) -> Key {
     let mut hasher = hash::SipHasher::new();
     hasher.write(val);
 
