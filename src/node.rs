@@ -13,6 +13,20 @@ use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
 use std::time::Duration;
 use storage;
 
+/// An interface in order to handle a given message.
+pub trait MessageHandler : Send {
+    /// Handle a given message, possibly taking ownership of it.
+    ///
+    /// The `message` variable is guaranteed to be non-`None`.
+    ///
+    /// If it's taken, other handlers won't see the message.
+    fn handle_message(&mut self, from: &SocketAddr, message: &mut Option<rpc::RPCMessage>);
+}
+
+/// A token identifying a message handler, which must be kept in order for the
+/// handler to be removed.
+pub struct HandlerToken(usize);
+
 /// A node in this Kademlia network.
 pub struct Node {
     /// Id of this node.
@@ -23,6 +37,9 @@ pub struct Node {
 
     /// The set of buckets for each bit of the key.
     buckets: Box<[KBucket]>,
+
+    /// The message handlers this node owns.
+    handlers: Vec<Box<MessageHandler>>,
 
     /// The UDP socket we're connecting to.
     ///
@@ -52,6 +69,7 @@ impl Node {
             id: id,
             store: storage::Store::new(),
             buckets: buckets.into_boxed_slice(),
+            handlers: vec![],
             socket: socket,
             rng: rng,
         })
@@ -80,6 +98,23 @@ impl Node {
                       address: &SocketAddr) {
         self.note_node(id, address);
     }
+
+    /// Add a handler for receiving messages sent to this node.
+    // pub fn add_handler(&mut self, handler: Box<MessageHandler>) -> HandlerToken {
+    //     use std::mem::transmute;
+    //     let token = HandlerToken(unsafe { transmute(&*handler as *const MessageHandler) });
+    //     self.handlers.push(handler);
+    //     token
+    // }
+
+    /// Remove a handler from this node's address.
+    // pub fn remove_handler(&mut self, token: HandlerToken) -> bool {
+    //     use std::mem::transmute;
+
+    //     let init_len = self.handlers.len();
+    //     self.handlers.retain(|h| token.0 == transmute(&**h as *const MessageHandler));
+    //     init_len != self.handlers.len()
+    // }
 
     /// A function used to note the ID and address of a node.
     pub fn note_node(&mut self,
@@ -114,6 +149,51 @@ impl Node {
         debug!("Got message {:?}", message);
         self.note_node(&message.sender, &source);
         Ok((source, message))
+    }
+
+
+    /// Loop infinitely, running handlers as needed.
+    ///
+    /// TODO(emilio): This is not finished yet. This would be a slightly nicer
+    /// interface, but I haven't time for it r/n.
+    pub fn run_main_loop<F, U>(&mut self, mut on_error: F, mut after_message: U)
+        where F: FnMut(io::Error) -> bool,
+              U: FnMut(bool) -> bool,
+    {
+
+        loop {
+            let (from, msg) = match self.recv_message() {
+                Ok(msg) => msg,
+                Err(e) => {
+                    if on_error(e) {
+                        break;
+                    }
+                    continue;
+                }
+            };
+
+            let mut msg = Some(msg);
+            for handler in self.handlers.iter_mut() {
+                handler.handle_message(&from, &mut msg);
+                if msg.is_none() {
+                    continue;
+                }
+            }
+
+            after_message(msg.is_some());
+
+            if let Some(rpc::RPCMessage { kind, sender }) = msg {
+                match kind {
+                    rpc::MessageKind::Request(request_kind) => {
+                        let _ =
+                            self.handle_request(request_kind, sender, from);
+                    }
+                    other => {
+                        debug!("Eating message: {:?}", other);
+                    }
+                }
+            }
+        }
     }
 
     /// Gets the `k` nodes we know closer to `node_id`. This is the main search
@@ -268,9 +348,13 @@ impl Node {
     ///
     /// Returns an error in the case of an error receiving a message, otherwise
     /// returns the value if found.
-    pub fn find(&mut self, k: storage::Key)
+    pub fn find(&mut self,
+                k: storage::Key)
                 -> io::Result<Option<storage::Value>> {
         let mut nodes_seen = HashSet::new();
+
+        let old_timeout = self.socket.read_timeout()?;
+        self.socket.set_read_timeout(None)?;
 
         let request =
             rpc::MessageKind::Request(rpc::RequestKind::FindValue(k.clone()));
@@ -281,6 +365,7 @@ impl Node {
             let nodes =
                 self.find_k_known_nodes_closer_to_not_in(&k, &nodes_seen);
             if nodes.is_empty() && nodes_to_try_from_last_round.is_empty() {
+                self.socket.set_read_timeout(old_timeout)?;
                 return Ok(None);
             }
             for node in nodes.into_iter().chain(nodes_to_try_from_last_round.into_iter()) {
@@ -308,6 +393,7 @@ impl Node {
                     match fvr {
                         rpc::FindValueResponse::Value(key, v) => {
                             if key == k {
+                                self.socket.set_read_timeout(old_timeout)?;
                                 return Ok(Some(v))
                             }
                             debug!("Received stale value for key {:?}", key);
