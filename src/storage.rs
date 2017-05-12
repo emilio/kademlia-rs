@@ -10,12 +10,12 @@ pub type Key = NodeId;
 
 /// A value in the store.
 ///
-/// FIXME(emilio): Right now we only store strings, but this doesn't need to be
+/// FIXME(emilio): Right now we only store blobs, but this doesn't need to be
 /// true forever.
 ///
 /// Actually, perhaps the code should be more generic across keys and values...
 /// Oh well.
-pub type Value = String;
+pub type Value = Vec<u8>;
 
 /// The actual store we use in each node. Right now we use a standard `HashMap`.
 ///
@@ -27,7 +27,7 @@ pub type Store = HashMap<Key, Value>;
 #[allow(deprecated)] // SipHasher is deprecated, oh well.
 pub fn hash(val: &Value) -> Key {
     let mut hasher = hash::SipHasher::new();
-    hasher.write(val.as_bytes());
+    hasher.write(val);
 
     // These are 64 bit, we could use up to 160, but for now we just use these
     // 64 bits.
