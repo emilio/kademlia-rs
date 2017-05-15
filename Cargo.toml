@@ -2,6 +2,7 @@
 name = "kademlia"
 version = "0.1.0"
 authors = ["Emilio Cobos Álvarez <emilio@crisal.io>"]
+license = "GPL-3"
 
 [dependencies]
 bincode = "0.7"
