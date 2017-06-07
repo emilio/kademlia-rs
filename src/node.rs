@@ -99,6 +99,11 @@ impl Node {
         &self.id
     }
 
+    /// Gets a view on the buckets of the node, mostly for debugging.
+    pub fn buckets(&self) -> &[KBucket] {
+        &self.buckets
+    }
+
     /// Go through the raw storage mechanism.
     pub fn store(&self) -> &storage::Store {
         &self.store
@@ -332,7 +337,10 @@ impl Node {
                                       &message,
                                       bincode::Bounded(rpc::RPC_MESSAGE_MAX_SIZE as u64)) {
             Ok(()) => {},
-            Err(err) => return Err(io::Error::new(io::ErrorKind::Other, err)),
+            Err(err) => {
+                debug!("Error sending message: {:?}", err);
+                return Err(io::Error::new(io::ErrorKind::Other, err))
+            }
         };
 
         debug!("Sent message {:?}", message);
